@@ -4,7 +4,6 @@ start:
     AND X5, X1, X2
     ANDI X6, X1, #2
     B loop
-
 loop:
     B.EQ start
     B.NE start
@@ -38,13 +37,11 @@ loop:
     SUBS X17, X1, X2
     MUL X18, X1, X2
     B final
-
 final:
     PRNT X1
     PRNL
     DUMP
     HALT
     B end
-
 end:
 

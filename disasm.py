@@ -1,3 +1,11 @@
+import sys
+
+if (len(sys.argv) != 2):
+    print("Usage: python3 disasm.py <filename>")
+    sys.exit(1)
+
+filename = sys.argv[1]
+
 instructions = {
     '10001011000': {"name": "ADD", "type": "R", "output": "ADD rd, rn, rm"},
     '1001000100': {"name": "ADDI", "type": "I", "output": "ADDI rd, rn, imm"},
@@ -12,6 +20,7 @@ instructions = {
     '11010110000': {"name": "BR", "type": "R", "output": "BR rn"},
     '10110101': {"name": "CBNZ", "type": "CB", "output": "CBNZ rt, address"},
     '10110100': {"name": "CBZ", "type": "CB", "output": "CBZ rt, address"},
+    '01010100': {"name": "Bcond", "type": "CB", "output": "B.cond address"},
     '11111111110': {"name": "DUMP", "type": "R", "output": "DUMP"},
     '11001010000': {"name": "EOR", "type": "R", "output": "EOR rd, rn, rm"},
     '1101001000': {"name": "EORI", "type": "I", "output": "EORI rd, rn, imm"},
@@ -38,7 +47,7 @@ instructions = {
     '10101010000': {"name": "ORR", "type": "R", "output": "ORR rd, rn, rm"},
     '1011001000': {"name": "ORRI", "type": "I", "output": "ORRI rd, rn, imm"},
     '11111111100': {"name": "PRNL", "type": "R", "output": "PRNL"},
-    '11111111101': {"name": "PRNT", "type": "R", "output": "PRNT"},
+    '11111111101': {"name": "PRNT", "type": "R", "output": "PRNT rd"},
     '10011010110': {"name": "SDIV", "type": "R", "output": "SDIV rd, rn, rm"},
     '10011011010': {"name": "SMULH", "type": "R", "output": "SMULH rd, rn, rm"},
     '11111000000': {"name": "STUR", "type": "D", "output": "STUR rd, [rn, address]"},
@@ -82,19 +91,43 @@ instruction_types = {
     }
 }
 
+conditional_codes = {
+    0b0000: 'EQ',
+    0b0001: 'NE',
+    0b0010: 'HS',
+    0b0011: 'LO',
+    0b0100: 'MI',
+    0b0101: 'PL',
+    0b0110: 'VS',
+    0b0111: 'VC',
+    0b1000: 'HI',
+    0b1001: 'LS',
+    0b1010: 'GE',
+    0b1011: 'LT',
+    0b1100: 'GT',
+    0b1101: 'LE',
+}
+
 instruction_matches = [
-    [0b000101, 0b100101], # size 6
-    [0b10110101, 0b10110100], # size 8
-    [0b1001000100, 0b1011000100, 0b1001001000, 0b1111001000, 0b1110101000, 0b1101001000, 0b1011001000, 0b1101000100, 0b1111000100], # size 10
+    [0b000101, 0b100101],  # size 6
+    [0b10110101, 0b10110100, 0b01010100],  # size 8
+    [0b1001000100, 0b1011000100, 0b1001001000, 0b1111001000, 0b1110101000,
+        0b1101001000, 0b1011001000, 0b1101000100, 0b1111000100],  # size 10
 ]
 
 instruction_keys = list(instructions.keys())
 
+output_arr = []
+labels = {0: "label_0"}
+
 def twos_complement_binary_to_integer(binary_str):
-    if binary_str[0] == '0':  # Positive number
+    if (len(binary_str) < 19):
+        return int(binary_str, 2)
+    elif binary_str[0] == '0':  # Positive number
         return int(binary_str, 2)
     else:  # Negative number
-        ones_complement = ''.join(['1' if bit == '0' else '0' for bit in binary_str])
+        ones_complement = ''.join(
+            ['1' if bit == '0' else '0' for bit in binary_str])
 
         twos_complement = bin(int(ones_complement, 2) + 1)[2:]
 
@@ -103,28 +136,45 @@ def twos_complement_binary_to_integer(binary_str):
         negative_integer = -decimal_value
         return negative_integer
 
+def getOrAddLabel(i):
+    if (i in labels):
+        return labels[i]
+    else:
+        labels[i] = "label_" + str(len(labels))
+        return labels[i]
+
 def parseInst(instruction, code, inst_num):
-    #print(instruction)
-    #print(code)
     instruction_type = instruction['type']
     instruction_breakdown = instruction_types[instruction_type]['breakdown']
     instruction_elements = instruction_types[instruction_type]['elements']
     instruction_split = {}
     output = instruction["output"] or ""
     for (j, [shift, mask]) in enumerate(instruction_breakdown):
-        key = instruction_elements[j] # Get element break e.g. opcode, address, rt
+        # Get element break e.g. opcode, address, rt
+        key = instruction_elements[j]
         if shift == None:
             # End of breakdown, but still need to get bits
             instruction_split[key] = bin(int(code, 2) & mask)
         else:
             # Use breakdown array to fetch respective bits for key
             instruction_split[key] = bin(int(code, 2) >> shift & mask)
-        if (key == "imm" or instruction_type == "B" or instruction_type == "BL" or (instruction_type.startswith("CB") and key =="address") or (instruction["type"] == "D" and key == "address")):
-            if (instruction_type == "B" and key == "address"):
+        if (instruction['name'] == "Bcond" and (key == "rt" or key == "address")):
+            if (key == "rt"):
+                conditional_code = int(instruction_split[key], 2)
+                for (code, name) in conditional_codes.items():
+                    if (conditional_code ^ code == 0):
+                        s = name
+                key = "cond"
+            elif (key == "address"):
+                label = getOrAddLabel(inst_num + twos_complement_binary_to_integer(instruction_split[key][2:]))
+                s = label
+        elif (key == "imm" or instruction_type == "B" or instruction_type == "BL" or (instruction_type.startswith("CB") and key == "address") or (instruction["type"] == "D" and key == "address") or (instruction['name'] == 'LSL' and key == 'rm') or (instruction['name'] == 'LSR' and key == 'rm')):
+            if ((instruction_type == "B" or instruction_type == "CB") and key == "address"):
                 # Calculate relative instruction line distance using inst_num
-                s = str(inst_num + twos_complement_binary_to_integer(instruction_split[key]))
+                label = getOrAddLabel(inst_num + twos_complement_binary_to_integer(instruction_split[key][2:]))
+                s = label
             else:
-                s = "#" + str(twos_complement_binary_to_integer(instruction_split[key]))
+                s = "#" + str(twos_complement_binary_to_integer(instruction_split[key][2:]))
         else:
             # Check for common registers and replace if necessary
             register = int(instruction_split[key], 2)
@@ -140,12 +190,12 @@ def parseInst(instruction, code, inst_num):
         output = output.replace(key, s)
     return output
 
-f = open("test.asm.machine", "rb")
+f = open(filename, "rb")
 data = f.read()
 binary_machine_code = ''.join(format(byte, '08b') for byte in data)
-split_code = [binary_machine_code[i:i+32] for i in range(0, len(binary_machine_code), 32)]
+split_code = [binary_machine_code[i:i+32]
+              for i in range(0, len(binary_machine_code), 32)]
 for (i, code) in enumerate(split_code):
-    #print(code)
     matched = False
     # Get first 6 bits using bit manipulation and check against 6 bit instructions
     for instruction_match in instruction_matches[0]:
@@ -153,22 +203,36 @@ for (i, code) in enumerate(split_code):
         if check ^ instruction_match == 0:
             matched = True
             key = format(instruction_match, '06b')
-            print(str(i) + ": " + parseInst(instructions[key], code, i))
+            #print(str(i) + ": " + parseInst(instructions[key], code, i))
+            output_arr.append(parseInst(instructions[key], code, i))
     # Get first 8 bits using bit manipulation and check against 8 bit instructions
     for instruction_match in instruction_matches[1]:
         check = int(code, 2) >> 24 & 0xFF
         if check ^ instruction_match == 0 and not matched:
             key = format(instruction_match, '08b')
-            print(str(i) + ": " + parseInst(instructions[key], code, i))
+            #print(str(i) + ": " + parseInst(instructions[key], code, i))
+            output_arr.append(parseInst(instructions[key], code, i))
     # Get first 10 bits using bit manipulation and check against 10 bit instructions
     for instruction_match in instruction_matches[2]:
         check = int(code, 2) >> 22 & 0x3FF
         if check ^ instruction_match == 0 and not matched:
             key = format(instruction_match, '010b')
-            print(str(i) + ": " + parseInst(instructions[key], code, i))
+            #print(str(i) + ": " + parseInst(instructions[key], code, i))
+            output_arr.append(parseInst(instructions[key], code, i))
     # Get first 11 bits using bit manipulation and check against 11 bit instructions
     for instruction_match in instruction_keys:
         check = int(code, 2) >> 21 & 0x7FF
         if check ^ int(instruction_match, 2) == 0 and not matched:
-            print(str(i) + ": " + parseInst(instructions[instruction_match], code, i))
+            #print(str(i) + ": " + parseInst(instructions[instruction_match], code, i))
+            output_arr.append(parseInst(instructions[instruction_match], code, i))
 f.close()
+
+# Iterate through labels and insert into output_arr
+offset = 0
+for (label, name) in labels.items():
+    output_arr.insert(label + offset, name + ":")
+    offset += 1
+
+# Print output_arr
+for line in output_arr:
+    print(line)
