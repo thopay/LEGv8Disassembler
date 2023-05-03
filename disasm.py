@@ -123,11 +123,11 @@ labels = {0: "label_0"}
 def twos_complement_binary_to_integer(binary_str):
     if (len(binary_str) < 19):
         return int(binary_str, 2)
-    elif binary_str[0] == '0':  # Positive number
+    elif (int(binary_str[0]) & 1) == 0:  # Positive number
         return int(binary_str, 2)
     else:  # Negative number
         ones_complement = ''.join(
-            ['1' if bit == '0' else '0' for bit in binary_str])
+            ['1' if (int(bit) & 1) == 0 else '0' for bit in binary_str])
 
         twos_complement = bin(int(ones_complement, 2) + 1)[2:]
 
@@ -203,27 +203,23 @@ for (i, code) in enumerate(split_code):
         if check ^ instruction_match == 0:
             matched = True
             key = format(instruction_match, '06b')
-            #print(str(i) + ": " + parseInst(instructions[key], code, i))
             output_arr.append(parseInst(instructions[key], code, i))
     # Get first 8 bits using bit manipulation and check against 8 bit instructions
     for instruction_match in instruction_matches[1]:
         check = int(code, 2) >> 24 & 0xFF
         if check ^ instruction_match == 0 and not matched:
             key = format(instruction_match, '08b')
-            #print(str(i) + ": " + parseInst(instructions[key], code, i))
             output_arr.append(parseInst(instructions[key], code, i))
     # Get first 10 bits using bit manipulation and check against 10 bit instructions
     for instruction_match in instruction_matches[2]:
         check = int(code, 2) >> 22 & 0x3FF
         if check ^ instruction_match == 0 and not matched:
             key = format(instruction_match, '010b')
-            #print(str(i) + ": " + parseInst(instructions[key], code, i))
             output_arr.append(parseInst(instructions[key], code, i))
     # Get first 11 bits using bit manipulation and check against 11 bit instructions
     for instruction_match in instruction_keys:
         check = int(code, 2) >> 21 & 0x7FF
         if check ^ int(instruction_match, 2) == 0 and not matched:
-            #print(str(i) + ": " + parseInst(instructions[instruction_match], code, i))
             output_arr.append(parseInst(instructions[instruction_match], code, i))
 f.close()
 
