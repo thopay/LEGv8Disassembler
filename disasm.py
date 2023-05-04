@@ -121,7 +121,7 @@ output_arr = []
 labels = {0: "label_0"}
 
 def twos_complement_binary_to_integer(binary_str):
-    if (len(binary_str) < 19):
+    if (len(binary_str) < 8):
         return int(binary_str, 2)
     elif (int(binary_str[0]) & 1) == 0:  # Positive number
         return int(binary_str, 2)
